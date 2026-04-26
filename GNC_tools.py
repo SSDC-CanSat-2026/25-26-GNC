@@ -2,23 +2,32 @@ import numpy as np
 import math as m
 from scipy.integrate import ode
 import matplotlib.pyplot as plt
-#--------------------- GNC Subroutines---------#
+#------------------ GNC Subroutines---------#
 # The objective of this python code is to provide 
 # the Electronics/Firmware team with the necessary GNC
 # subroutine logic that will be used on the Paraglider
-# for autonomous navigation. Description of each subroutine
+# for autonomous navigation. Descriptions of each subroutine
 # are present and are intended for instructive purposes and 
 # will not be actually implemented in this exact manner in the 
 # flight code.
+
+#------------------ GLOBAL VARIABLES -------------------------
+#The following are global parameters that will be needed for most/all subroutines
 d2r = m.pi/180
 r2d = 1/d2r
-g = 9.79281 #local gravity
+g = 9.79281 #local gravity (m/s^2)
+Ds = ((17.602+25.0))/2 #spool diameter (mm)
+DEL2US = 58.97365 #this directly converts a deflection command to degrees
+delta0 = 1500 #servos nuetral position in microseconds
+t_deploy = 5.2; #time it takes the egg to deploy (right now it's bs)
+
+
 
 def proNav(r_p,vNED,v_p,los_i,roll_i):
 #Calculates the proportional navigation acceleration command to be
 #used during Phase 1 of flight. 
 #Inputs: 
-#1) r_p (pursuer(glider) position with respect to target) GPS
+#1) r_p (pursuer(glider) NED position vector of pursuer with respect to target 
 #2) vNED (pursuer velocity in the NED frame) -> GPS,accel
 #3) v_p (pursuer velocity in body frame) -> GPS,accel
 
@@ -29,13 +38,14 @@ def proNav(r_p,vNED,v_p,los_i,roll_i):
 #3) Line of sight rate (dlos) - the line of sight rate must be proportional to the commanded acceleration for target intercept
     
     N = 2 #(usually around 2-5)    
-    Kp = 5 #Proportional gain for roll controller 
-    
+    Kp = 2 #Proportional gain for roll controller 
+    r_p *= -1 #pro-nav requires vector from pursuer to target, not the other way around
     dlos = ((vNED[1]*r_p[0])-(r_p[1]*v_NED[0]))/m.sqrt(r_p[0]**2+r_p[1]**2) #rate of change of the line of sight
+    
     #Note: it may be acceptable to instead compute the line of sight over two time steps and compute the derivative 
     #using los_2-los_1/(dt). The above is from kinematic derivations. If a quicker approximation is desired. 
     #then the following approximation can also be done (los_i is line of sight at previous time step i) 
-    los_j = m.atan2(r_p[1],r_p[0]) #line of sight at next time step j 
+    los_j = m.atan2(r_p[1],r_p[0]) #line of sight at next time step j using trig  
     dlos = (los_j-los_i)/dt  
 
     #Compute the proportional navigation command in the body frame: 
@@ -45,13 +55,10 @@ def proNav(r_p,vNED,v_p,los_i,roll_i):
     #This comes from equations of equillibrium of an aircraft at some roll angle in steady flight
     #Constant altitude, coordinate turn is assummed 
     roll_cmd = m.atan2(a_p/g)*r2d
-    #Compute the control command to the motors this is correlated to a line deflection.
-    #This deflection (delta) can then be mapped to the motors using a degree/deflection coefficinet (c).
-    #Of course we also must convert this to a difference in position in microseconds, define a us/degree coefficient (d)
-    c = 1.0
-    d = 1.0 #these values are bs for now
-    delta = Kp*(roll_cmd-roll_i)
-    mtr_cmd = c*d*delta
+    
+    #Compute the control command to the motors related to line deflection.
+    delta = (int)(Kp*(roll_cmd-roll_i)) #P control of roll position 
+    mtr_cmd = delta0+delta*DEL2US #Think you have to specify an integer for microsecond command
     
     return mtr_cmd
 
@@ -118,8 +125,7 @@ def geodetic2ned(geot,geop):
     r = R@dr
     
     return r 
-    
-    
+       
 def geodetic2ecef(lat,long,h):
 #Description: Finds the position vector of a specific point in on Earth using Earth-Centered-Earth-Fixed
 #(ECEF) coordinates. This uses equations that can be found on ESA's website, but it mainly comes from the 
@@ -143,8 +149,8 @@ def geodetic2ecef(lat,long,h):
 
 def main(): #main is used as a tester function
     #---------------------- PHASE 0) INITIALIZE -----------------------
-    #BIAS variables (obtain from taking an average of a couple samples when ground station command calibration) 
-    h_b = 100 #altitude bias (m) (have to calibrate to zero, but store to calculate altitude difference)
+    #BIAS variables (obtain from taking an average of a couple samples when ground station commands calibration) 
+    h_b = 100 #altitude bias (m)
     gyro_bx,gyro_by,gyro_bz = 0.5,0.75,0.1 #gyro bias (deg/s) 
     gb = np.array([gyro_bx,gyro_by,gyro_bz])
     accel_bx,accel_by,accel_bz = 0.1,0.05,0.2 #accelerometer bias (m/s^2)
@@ -155,23 +161,22 @@ def main(): #main is used as a tester function
     tz = 180*d2r #sensor is rotated 180 about x (not actually sure, will check how sensor is mounted)
     gb = Rmatrix(tz,1)
     
-    trgt = np.array([38.3760167, -79.6078722,500]).T #target coordinates (at launch pad)
+    trgt = np.array([38.3760167, -79.6078722,200]).T #target coordinates (at launch pad)
     pgldr = np.array([38.3758388, -79.6076027,500]).T #right now this is just a position on the target pad
+    #so I can use Google maps as a reference. 
     
-    rtp = geodetic2ned(trgt,pgldr)
-    dist = m.sqrt(rtp[0]**2+rtp[1]**2)
+    rtp = geodetic2ned(trgt,pgldr) #compute NED vector 
+    dist = m.sqrt(rtp[0]**2+rtp[1]**2) #Get the distance in the North-East plane
     
-    #Print results: 
-    print(f'Rotation Matrix (IMU to Body): {gb}')
-    print(f'Position Vector to Paraglider: {rtp}')
-    print(f'Distance (North-East Plane): {dist} (m)')
-    
+    print(f'NED Vector: {rtp}\n')
+    print(f'NE Distance: {dist}\n')
     #----------------------PHASE 1) COAST PHASE -----------------------
     #This phase will be executed when the glider is outside of the container and will initiate 
     #based on the descent rate of the glider (once this reaches nearly a constant).
     #once the descent rate reaches a constant, the porportional navigation phase is executed
     #so that the glider steers to an intercept trajectory.
     
+    #First
     
 if __name__ == "__main__":
     main()
