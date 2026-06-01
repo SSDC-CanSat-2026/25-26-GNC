@@ -6,7 +6,16 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+typedef enum GNC_Axis
+{
+    linalg_x_axis = 1,
+    linalg_y_axis,
+    linalg_z_axis,
+} GNC_Axis;
+
 // Function Prototypes
+//I believe undefined or variable array size (anything just not known at compile time) for parameters causes a compilation error in C; 
+//if anything matrices have to be passed in as pointers
 void printArray(float arr[], int len);
 float dot(float arr1[], float arr2[], int size);
 void transposeMat(float A[][3]);
