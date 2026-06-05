@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 #include "linalg.h"
 #include "GNC.h"
 
@@ -10,127 +11,38 @@
 const float D2R = M_PI*(1.0/180.0);
 
 int main() {
-    //TESTING (CAN IGNORE UP TO "MAIN INITIALIZATION") -----------------------
-    //Just some print testing to understand the syntax
-    float gyrob[3] = {1,2,3};
-    float accelb[3] = {1,2,3};
-    int len = sizeof(gyrob)/sizeof(gyrob[0]);
-    //Dot product function test
-    float dotga = dot(gyrob,accelb,len);
-    
-    //Testing 3x3 matrix multiplication 
-    //Arbitrary matrix
-    float I[3][3] = {{1,0,0},
-                     {0,1,0},
-                     {0,0,1}};
-    //Arbitrary Matrix
-    float R[3][3] = {{1,2,3},
-                     {3,4,5},
-                     {6,7,8}};
-    //Matrix Multiplication 
-    //Start by pre-allocating memory for resultant matrix
-    //May be better just to preallocate matrices then modify in void functions 
-    //as oppossed to using pointers, everything is a fixed 3x3 size anyway.
-    float Res[3][3] = {{0,0,0},
-                       {0,0,0},
-                       {0,0,0}};
+//USE THE FOLLOWING BELOW AS A REFERENCE FOR CONSTRUCTION OF THE GNC ALGORITHM
 
-    //Specify the number of rows (n) and number of columns(m) of the resultant matrix
-    float Rc[3][1] = {{1},{2},{3}};
-    
-    float cRes[3][1] = {{0},{0},{0}};
+//MAIN INITIALIZATION - run once to initialize Nav struct 
+    //1) initialize gyro,accel,mag offsets at launch pad
+    //2) read from sensors and run init_Navigation()
+        //EXAMPLE: Nav nav = init_Navigation(data, gga, PSTMPV, GPS_ready);
+        //Guidance guid = {0}; //can make guidance blank until we enter control loop
+    //3) need something that will start the main loop when glider outside container, can we use descent acceleration?
+        /*
+        The accelerometer, though noisy, should measure nearly +1g when the glider reaches terminal velocity. 
+        So we can use a conditional that checks ICM42688P accel_z (or whichever axis is pointing vertical) and 
+        see when it's close to zero it may be best to do this over an average to avoid fast spikes in accelerometer 
+        values affecting when the main loop is started. We will have to coordinate transform this into the NED frame
+        and I can work on getting this done ASAP unless we already have something we can use for this.
+        */
 
-    matmult(3,1,I,Rc,cRes);
-    rpyDCM(30.0,30.0,30.0,Res);
+    //EXAMPLE: MAIN INITIALIZATION - REPLACE NECESSARY ELEMENTS WITH SENSOR STRUCT FIELDS
+    //So for example, gps[3] takes in gga struct latitude, longitude, and altitude (or global struct)
+    float gps[3] = {38.3756417, -79.6072944, 1038}; //arbitrary (this is just the center of the drop zone)
+    float accel[3][1] = {{0},{0},{1.0}}; //acceleration from the accelerometer (g)
+    float gyro[3][1] = {{2.0},{1.0},{4.0}};
 
-    //Testing geodetic2NED
-    float r_tp[3][1] = {{0},{0},{0}};
-    
-    
-    float trgt[3][1] = {{38.3760167}, {-79.6078722},{200}}; //lat, long target coordinates (at launch pad)
-    float pgldr[3][1] = {{38.3758388}, {-79.6076027},{500}}; //lat, long of paraglider, right now this is just a position on the target pad
-    
-    //Compute the NED vector and the North East distance
-    geodetic2ned(trgt[0][0],trgt[1][0],trgt[2][0],pgldr[0][0],pgldr[1][0],pgldr[2][0],r_tp);
-    float rnorm = sqrt((r_tp[0][0]*r_tp[0][0])+(r_tp[1][0]*r_tp[1][0]));
-    
-    Nav nav = {0};
-    Guidance guid = {0};
-    AutoPilot ap = {0};
-    nav.trgt[0][0] = 38.3760167f;
-    nav.trgt[1][0] = -79.6078722f;
-    nav.trgt[2][0] = 1038.0f;
+    Nav nav = init_Navigation(gps,gyro,accel); //initialize the navigation states
+    Guidance guid = {0}; //no guidance initially, can set this to zero
+    AutoPilot ap = {0}; //same story with the autopilot, can set this to zero 
 
-    nav.rpy[0][0] = 10.0*D2R;
-    nav.rpy[1][0] = 0.0;
-    nav.rpy[2][0] = 0.0;
+    printf("Nav struct properties:\n");
+    printf("Initial Position (N,E,D): %0.5f (m),%0.5f (m),%0.5f (m) \n",nav.pos_G[0][0],nav.pos_G[1][0],nav.pos_G[2][0]);
+    printf("Attitude (r,p,y): %0.2f (rad), %0.2f (rad), %0.2f (rad) \n",nav.rpy[0][0],nav.rpy[1][0],nav.rpy[2][0]);
+    printf("---------------------------------------------------\n");
 
-    float rtp[3][1] = {{-41.63},{50.50},{0.00}};
-    float vel_L[3][1] = {{3.32},{1.21},{-3.54}};
-
-    nav.vel_L[0][0] = 3.32;
-    nav.vel_L[1][0] = 1.21;
-    nav.vel_L[2][0] = -3.54;
-
-
-    nav.HE = calculateHE(rtp,vel_L);
-    nav.HE *= D2R;
-    printf("----------------------\n");
-    printf("Heading Error: %0.3f\n",nav.HE);
-
-    printf("NE Distance (m): %0.4f\n",rnorm);
-    printf("PRINTING NED VECTOR: \n");
-    for (int i=0;i<3;i++){
-        printArray(r_tp[i],1); 
-        printf("\n");  
-    }
-    printf("===========\n"); 
-
-    float latg   = 38.3756417f;
-    float longg = -79.6072944f;
-    float mhoe  = 1038.0f;
-    ap.phi_cmd = 18.0;
-    nav.slack = 0;
-    findTarget(&nav,latg,longg,mhoe);
-    uint32_t cmd = computeCommand(nav,ap);
-
-    printf("Command computed: %d us\n",cmd);
-
-    float HE = 1.44;
-    float Vg =  0.93;
-    float Rng = 83.39;
-
-    float tgo = calculateTgo(HE,Rng,Vg);
-    printf("Time to go estimate: %0.2f\n",tgo);
-
-    nav.mode = 1;
-
-    //Update Autopilot
-    nav.pos_G[0][0] = r_tp[0][0];
-    nav.pos_G[1][0] = r_tp[1][0];
-    nav.pos_G[2][0] = r_tp[2][0];
-    // END OF TESTING -----------------------
-
-    //Replace with whatever initialization is being done 
-    ICM42688P_AccelData data = {0};
-    GGA_Data_t gga = {0};
-    PSTMPV_Data_t PSTMPV = {0};
-    int GPS_ready = 1; // check the GPS readines
-
-    //MAIN INITIALIZATION - run once to initialize Nav struct 
-        //1) initialize gyro,accel,mag offsets at launch pad
-        //2) read from sensors and run init_Navigation()
-            //EXAMPLE: Nav nav = init_Navigation(data, gga, PSTMPV, GPS_ready);
-            //Guidance guid = {0}; //can make guidance blank until we enter control loop
-        //3) need something that will start the main loop when glider outside container, can we use descent acceleration?
-            /*
-            The accelerometer, though noisy, should measure nearly +1g when the glider reaches terminal velocity. 
-            So we can use a conditional that checks ICM42688P accel_z (or whichever axis is pointing vertical) and 
-            see when it's close to zero it may be best to do this over an average to avoid fast spikes in accelerometer 
-            values affecting when the main loop is started. We will have to coordinate transform this into the NED frame
-            and I can work on getting this done ASAP unless we already have something we can use for this.
-            */
-
+//This is the target directly in the center of the drop zone
     //MAIN LOOP - Process in the main loop will always perform the following actions
         //1) Read data from sensors (assuming this is already being done)
         //2) Update_Navigation(structs from all sensors)
@@ -144,11 +56,48 @@ int main() {
         //2) nav.slack = 1 AND nav.DROPNOW = 0 (run targetScan if nav.pursue = 0 and run loop as normal)
         //3) nav.slack = 0 AND nav.DROPNOW = 1 (deploy egg at target altitude)
         //4) nav.slack = 0 AND nav.DROPNOW = 0 (run targetScan if nav.pursue = 0 and run loop as normal)
+    
+    //EXAMPLE TEMPLATE: MAIN INITIALIZATION
+    int totalTime = 10;
+    for (int i=1;i<totalTime;i++) { //simualte GPS change in coordinates (replace with sensor readings)
+        gps[0] = gps[0]-((rand()%1)/1000.0);
+        gps[1] = (gps[1]+(rand()%1)/1000.0);
+        gps[2] = (gps[2]-(rand()%2)); 
+        
+        gyro[0][0] = (rand()%100); //random change gyro and accel readings (angular rate)
+        gyro[1][0] = (rand()%100); //pitch (rate)
+        gyro[2][0] = (rand()%100); //yaw (rate)
 
-    //Update_Navigation()
-    Update_Guidance(&nav,&guid);
-    Update_Autopilot(&guid,nav);
-    printf("Autopilot activated, phi_cmd: %0.2f\n",ap.phi_cmd);
-    return 0;
+        accel[0][0] = (rand()%16); //random change in accel readings (g's), ax
+        accel[1][0] = (rand()%16); //ay
+        accel[2][0] = (rand()%16); //az
 
+        Update_Navigation(&nav,gps,gyro,accel); //update the navigation states
+        //printf("Position (x,y,z): %0.2f (m), %0.2f (m), %0.2f (m)\n",nav.pos_G[0][0],nav.pos_G[1][0],nav.pos_G[2][0]);
+        printf("Attitude (r,p,y): %0.2f (rad), %0.2f (rad), %0.2f (rad) \n",nav.rpy[0][0],nav.rpy[1][0],nav.rpy[2][0]);
+        Update_Guidance(&nav,&guid); //with the new navigation states, update guidance commands 
+        Update_Autopilot(&guid,&nav,&ap); //determine autopilot commands which convert guidance commands into rotations
+        uint16_t cmd = computeCommand(&nav,&ap); //compute the rotations necessary to turn the motors in us
+        
+        //ADD SERVO WRITE CODE HERE // (the servos should be run at a 50Hz frequency)
+        //Ex: SERVO_RawMove(instance,cmd)
+        
+        //CONDITIONAL LOGIC (this mainly just checks whether the paraglider needs to search for a target)
+        if (nav.slack == 1 && nav.DROPNOW == 1) {
+            printf("Condition 1 Entered. Deploying Egg....\n");
+            //ADD DEPLOYMENT CODE HERE (write to release servo)
+        }
+        else if (nav.slack == 1 && nav.DROPNOW == 0) {
+            printf("Condition 2 Entered. Searching for nearest target...\n");
+            findTarget(&nav,gps);
+        }
+        else if (nav.slack == 0 && nav.DROPNOW == 1) {
+            printf("Condition 3. Deploying Egg....\n");
+            //ADD DEPLOYMENT CODE HERE (write to release servo)
+        }
+        else if (nav.slack == 0 && nav.DROPNOW == 0) {
+            printf("Condition 4 Entered, Glider in Coast Phase\n");
+            findTarget(&nav,gps);
+        }
+    }
 }

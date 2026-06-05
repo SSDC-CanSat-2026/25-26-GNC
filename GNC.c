@@ -142,8 +142,7 @@ void findTarget(Nav *nav, float gps[3]){
         if (trgtprev != nav->trgt[0][0]) {
             printf("FOUND TARGET\n");
             nav->pursue = 1;
-            nav->timeFound = HAL_GetTick();
-            nav->timeFound = 0;
+            nav->timeFound = 2;
         }  
         else {
             printf("Did not find a new target\n");
@@ -172,9 +171,7 @@ uint16_t computeCommand(Nav *nav, AutoPilot *ap) {
     the direction of desired bank angle.
     */
     float Kp = 2.0f; //proportional gain term
-    float roll = nav->rpy[0][0]*1.0/DEG2RAD; //roll and phi mean the same thing 
-    float err = ap->phi_cmd-roll;
-    
+    float err = ap->phi_cmd-nav->rpy[0][0]*1.0/DEG2RAD; //error in roll
     float cmddeg2us = DEL2US*Kp*err;
 
     uint16_t cmd = 1500+(uint16_t)roundf(cmddeg2us); //add servo command to servo home at 1500 us
@@ -184,19 +181,19 @@ uint16_t computeCommand(Nav *nav, AutoPilot *ap) {
     if (cmd < 500) {
         cmd = 500; //clip to min rotation
     }
+    printf("Servo Command (us): %0.3d\n",cmd);
     return cmd;
 }
 
 void Update_Autopilot(Guidance *guid, Nav *nav, AutoPilot *ap){
     if (nav->mode == 0) { //Coasting phase - glider moves in a straight line
-        printf("Coasting Phase\n");
         ap->phi_cmd = 0.0; //autopilot just keeps paraglider at a level bank
     }
     else {
         ap->phi_cmd = atan2f(guid->accel_cmd_B[1][0], -guid->accel_cmd_B[2][0]+0.001f); //coordinated turn bank equation
         ap->phi_cmd *= 1/DEG2RAD;
         if (fabsf(ap->phi_cmd) > phi_max) {
-            ap->phi_cmd = (ap->phi_cmd/ap->phi_cmd)*phi_max; // clip to max bank and  keep the sign
+            ap->phi_cmd = (ap->phi_cmd/ap->phi_cmd)*phi_max; // clip to max bank and keep the sign
         }
     }
 }
@@ -295,7 +292,7 @@ Nav init_Navigation(float gps[3], float gyro[3][1], float accel[3][1]) {
     nav.mode = 0; //mode determines if glider is in coast or in pro-nav
     nav.pursue = 0; //pursue is a boolean that determines whether a target is pursued or not
     nav.activateGNC = 0; //this variable determines when the main GNC loop takes place
-    nav.time = HAL_GetTick();
+    //nav.time = HAL_GetTick();
     nav.time = 0;
     nav.timeFound = 0; // time a target was found 
     nav.timeIntercept = 0; //time a target has been intercepted
@@ -322,8 +319,8 @@ void Update_Navigation(Nav *nav, float gps[3], float gyro[3][1], float accel[3][
     rpyDCM(IMUsens_roll,IMUsens_pitch,IMUsens_yaw,R_IB); //compute the rotation matrix from sensor frame to body frame
     
     //TIME VARIABLES
-    uint32_t currtime = HAL_GetTick();
-    uint32_t currtime = 0;
+    //uint32_t currtime = HAL_GetTick();
+    uint32_t currtime = nav->time+1;
     uint32_t delta_t = currtime-nav->time; //get time difference
     nav->time = currtime;
 
@@ -409,4 +406,3 @@ void Update_Navigation(Nav *nav, float gps[3], float gyro[3][1], float accel[3][
     }
     
 }
-
