@@ -146,9 +146,9 @@ int main() {
         //4) nav.slack = 0 AND nav.DROPNOW = 0 (run targetScan if nav.pursue = 0 and run loop as normal)
 
     //Update_Navigation()
-    Update_Guidance(nav,&guid);
-    Update_Autopilot(guid,nav);
+    Update_Guidance(&nav,&guid);
+    Update_Autopilot(&guid,nav);
     printf("Autopilot activated, phi_cmd: %0.2f\n",ap.phi_cmd);
     return 0;
-    
+
 }
