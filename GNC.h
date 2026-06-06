@@ -21,14 +21,14 @@ typedef struct {
     float trgtnodes[5][3]; //collection of target positions on the launch pad
     float deployHeight; //this is the altitude difference where the glider drops 
     float gyro_old_r; //gyro rates stored from each previous iteration of the main loop
-    float gyro_old_p;
+    float gyro_old_p; 
     float gyro_old_y;
     int slack; //this is a boolean that determines if the glider has reached a target too early  
     int mode; //integer that is 0 during (coast) and 1 during (pro-nav)
     int pursue; //boolean that determines if a target can be pursued
     int DROPNOW; //boolean that determines when the egg gets dropped
     int activateGNC; //boolean that determines when GNC main loop turns on
-    
+    int tgo; 
     uint32_t time;
     uint32_t timeFound; // time a target was found 
     uint32_t timeIntercept; //time a target has been intercepted
@@ -54,6 +54,6 @@ uint16_t computeCommand(Nav *nav, AutoPilot *ap);
 Nav init_Navigation(float gps[3], float gyro[3][1], float accel[3][1]);
 void Update_Autopilot(Guidance *guid, Nav *nav, AutoPilot *ap);
 void Update_Guidance(Nav *nav, Guidance *guid);
-void Update_Navigation(Nav *nav, float gps[3], float gyro[3][1], float accel[3][1]);
+void Update_Navigation(Nav *nav, float gps[3], float gyro[3][1], float accel[3][1], float gpsVelocity[3][1]);
 #endif
 
